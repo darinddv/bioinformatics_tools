@@ -1,0 +1,2029 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Adapted from GEOquert Bioconductor vignette \"http://bioconductor.org/packages/release/bioc/vignettes/GEOquery/inst/doc/GEOquery.html\"\n",
+    "\n",
+    "For most projects, only the getGEO function will be necessary but the whole vignette is covered for completeness and for the extra data structure utilities it offers."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# 1 Introduction to GEO data from NCBI for us with GEOquery Package\n",
+    "\n",
+    "## 1.1 General overview\n",
+    "GEO is an international public repository that archives and freely distributes microarray, next-generation sequencing--such as RNA-seq, ChiP-seq, single-cell RNA-seq--and other forms of high-throughput functional genomics data submitted by the research community.\n",
+    "\n",
+    "The three main goals of GEO are to:\n",
+    "\n",
+    "*Provide a robust, versatile database in which to efficiently store high-throughput functional genomic data\n",
+    "\n",
+    "*Offer simple submission procedures and formats that support complete and well-annotated data deposits from the research community \n",
+    "\n",
+    "*Provide user-friendly mechanisms that allow users to query, locate, review and download studies and gene expression profiles of interest\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1.2 GEO Data Organization\n",
+    "\n",
+    "* Platform (GPLxxx) - Platform records are supplied by submitters\n",
+    "A Platform record is composed of a summary description of the array or sequencer and, for array-based Platforms, a data table defining the array template. Each Platform record is assigned a unique and stable GEO accession number (GPLxxx). A Platform may reference many Samples that have been submitted by multiple submitters.\n",
+    "\n",
+    "A Platform record describes the list of elements on the array (e.g., cDNAs, oligonucleotide probesets, ORFs, antibodies) or the list of elements that may be detected and quantified in that experiment (e.g., SAGE tags, peptides).  \n",
+    "[Example Platform record](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GPL341)\n",
+    "\n",
+    "* Sample (GSMxxx) - Sample records are supplied by submitters\n",
+    "A Sample record describes the conditions under which an individual Sample was handled, the manipulations it underwent, and the abundance measurement of each element derived from it. Each Sample record is assigned a unique and stable GEO accession number (GSMxxx). A Sample entity must reference only one Platform and may be included in multiple Series.\n",
+    "\n",
+    "[Example Sample record](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM81022)\n",
+    "\n",
+    "* Series (GSExxx) - Series records are supplied by submitters\n",
+    "A Series record links together a group of related Samples and provides a focal point and description of the whole study. Series records may also contain tables describing extracted data, summary conclusions, or analyses. Each Series record is assigned a unique and stable GEO accession number (GSExxx).\n",
+    "\n",
+    "A Series record defines a set of related Samples considered to be part of a group, how the Samples are related, and if and how they are ordered. \n",
+    "Series records are available in a couple of formats which are handled by GEOquery independently. The smaller and new GSEMatrix files are quite fast to parse; a simple flag is used by GEOquery to choose to use GSEMatrix files (see below).\n",
+    "\n",
+    "[Example Series record](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE3541)\n",
+    "\n",
+    "* Dataset (GDSxxx) - DataSet records are assembled by GEO curators\n",
+    "As explained above, A GEO Series record is an original submitter-supplied record that summarizes an experiment. These data are reassembled by GEO staff into GEO Dataset records (GDSxxx).\n",
+    "\n",
+    "A DataSet represents a curated collection of biologically and statistically comparable GEO Samples and forms the basis of GEO's suite of data display and analysis tools.\n",
+    "\n",
+    "Samples within a DataSet refer to the same Platform, that is, they share a common set of array elements. Value measurements for each Sample within a DataSet are assumed to be calculated in an equivalent manner, that is, considerations such as background processing and normalization are consistent across the DataSet. Information reflecting experimental factors is provided through DataSet subsets.\n",
+    "\n",
+    "Both Series and DataSets are searchable using the GEO DataSets interface, but only DataSets form the basis of GEO's advanced data display and analysis tools including gene expression profile charts and DataSet clusters. Not all submitted data are suitable for DataSet assembly and we are experiencing a backlog in DataSet creation, so not all Series have corresponding DataSet record(s).\n",
+    "\n",
+    "[Example DataSet record](https://www.ncbi.nlm.nih.gov/sites/GDSbrowser?acc=GDS2225)\n",
+    "\n",
+    "* Profile - Profiles are derived from DataSets\n",
+    "A Profile consists of the expression measurements for an individual gene across all Samples in a DataSet. Profiles can be searched using the GEO Profiles interface.\n",
+    "\n",
+    "For more information, see About GEO Profiles page.\n",
+    "\n",
+    "[Example Profile records](https://www.ncbi.nlm.nih.gov/geoprofiles?term=GDS2225[ACCN]) "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# 2 Getting Started\n",
+    "There is only one command that is needed, getGEO. This one function interprets its input to determine how to get the data from GEO and then parse the data into useful R data structures. Usage is quite simple. This loads the GEOquery library.\n",
+    "\n",
+    ">getGEO(GEO = NULL, filename = NULL, destdir = tempdir(),  \n",
+    "  GSElimits = NULL, GSEMatrix = TRUE, AnnotGPL = FALSE, getGPL = TRUE,  \n",
+    "  parseCharacteristics = TRUE)\n",
+    "  \n",
+    "* _GEO_ - A character string representing a GEO object for download and parsing. (eg.,’GDS505’,’GSE2’,’GSM2’,’GPL96’)\n",
+    "\n",
+    "* _Filename_ -  The filename of a previously downloaded GEO SOFT format file or its gzipped\n",
+    "representation (in which case the filename must end in .gz). Either one of GEO\n",
+    "or filename may be specified, not both. GEO series matrix files are also handled.\n",
+    "Note that since a single file is being parsed, the return value is not a list of esets,\n",
+    "but a single eset when GSE matrix files are parsed.\n",
+    "\n",
+    "* _destdir_ -  The destination directory for any downloads. Defaults to the architecture-dependent\n",
+    "tempdir. You may want to specify a different directory if you want to save the\n",
+    "file for later use. Doing so is a good idea if you have a slow connection, as some\n",
+    "of the GEO files are HUGE!\n",
+    "\n",
+    "* _GSElimits_ - This argument can be used to load only a contiguous subset of the GSMs from\n",
+    "a GSE. It should be specified as a vector of length 2 specifying the start and end\n",
+    "(inclusive) GSMs to load. This could be useful for splitting up large GSEs into\n",
+    "more manageable parts, for example.\n",
+    "\n",
+    "* _GSEMatrix_ - A boolean telling GEOquery whether or not to use GSE Series Matrix files from\n",
+    "GEO. The parsing of these files can be many orders-of-magnitude faster than\n",
+    "parsing the GSE SOFT format files. Defaults to TRUE, meaning that the SOFT\n",
+    "format parsing will not occur; set to FALSE if you for some reason need other\n",
+    "columns from the GSE records.\n",
+    "\n",
+    "* _AnnotGPL_ - A boolean defaulting to FALSE as to whether or not to use the Annotation GPL\n",
+    "information. These files are nice to use because they contain up-to-date information remapped from Entrez Gene on a regular basis. However, they do not\n",
+    "exist for all GPLs; in general, they are only available for GPLs referenced by a\n",
+    "GDS\n",
+    "\n",
+    "* _getGPL_ - A boolean defaulting to TRUE as to whether or not to download and include\n",
+    "GPL information when getting a GSEMatrix file. You may want to set this\n",
+    "to FALSE if you know that you are going to annotate your featureData using\n",
+    "Bioconductor tools rather than relying on information provided through NCBI\n",
+    "GEO. Download times can also be greatly reduced by specifying FALSE.\n",
+    "\n",
+    "* _parseCharacteristics_ - A boolean defaulting to TRUE as to whether or not to parse the characteristics information (if available) for a GSE Matrix file. Set this to FALSE if you\n",
+    "experience trouble while parsing the characteristics.\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Installing package into 'C:/Users/darinddv/Documents/R/win-library/4.0'\n",
+      "(as 'lib' is unspecified)\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "package 'BiocManager' successfully unpacked and MD5 sums checked\n",
+      "\n",
+      "The downloaded binary packages are in\n",
+      "\tC:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda\\downloaded_packages\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Bioconductor version 3.11 (BiocManager 1.30.10), R 4.0.2 (2020-06-22)\n",
+      "\n",
+      "Installing package(s) 'BiocVersion', 'GEOquery'\n",
+      "\n",
+      "also installing the dependencies 'BiocGenerics', 'Biobase', 'limma'\n",
+      "\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "package 'BiocGenerics' successfully unpacked and MD5 sums checked\n",
+      "package 'Biobase' successfully unpacked and MD5 sums checked\n",
+      "package 'limma' successfully unpacked and MD5 sums checked\n",
+      "package 'BiocVersion' successfully unpacked and MD5 sums checked\n",
+      "package 'GEOquery' successfully unpacked and MD5 sums checked\n",
+      "\n",
+      "The downloaded binary packages are in\n",
+      "\tC:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda\\downloaded_packages\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Installation path not writeable, unable to update packages: survival\n",
+      "\n",
+      "Old packages: 'cpp11', 'ps'\n",
+      "\n",
+      "Loading required package: Biobase\n",
+      "\n",
+      "Loading required package: BiocGenerics\n",
+      "\n",
+      "Loading required package: parallel\n",
+      "\n",
+      "\n",
+      "Attaching package: 'BiocGenerics'\n",
+      "\n",
+      "\n",
+      "The following objects are masked from 'package:parallel':\n",
+      "\n",
+      "    clusterApply, clusterApplyLB, clusterCall, clusterEvalQ,\n",
+      "    clusterExport, clusterMap, parApply, parCapply, parLapply,\n",
+      "    parLapplyLB, parRapply, parSapply, parSapplyLB\n",
+      "\n",
+      "\n",
+      "The following objects are masked from 'package:stats':\n",
+      "\n",
+      "    IQR, mad, sd, var, xtabs\n",
+      "\n",
+      "\n",
+      "The following objects are masked from 'package:base':\n",
+      "\n",
+      "    anyDuplicated, append, as.data.frame, basename, cbind, colnames,\n",
+      "    dirname, do.call, duplicated, eval, evalq, Filter, Find, get, grep,\n",
+      "    grepl, intersect, is.unsorted, lapply, Map, mapply, match, mget,\n",
+      "    order, paste, pmax, pmax.int, pmin, pmin.int, Position, rank,\n",
+      "    rbind, Reduce, rownames, sapply, setdiff, sort, table, tapply,\n",
+      "    union, unique, unsplit, which, which.max, which.min\n",
+      "\n",
+      "\n",
+      "Welcome to Bioconductor\n",
+      "\n",
+      "    Vignettes contain introductory material; view with\n",
+      "    'browseVignettes()'. To cite Bioconductor, see\n",
+      "    'citation(\"Biobase\")', and for packages 'citation(\"pkgname\")'.\n",
+      "\n",
+      "\n",
+      "Setting options('download.file.method.GEOquery'='auto')\n",
+      "\n",
+      "Setting options('GEOquery.inmemory.gpl'=FALSE)\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "#To install package if not already installed\n",
+    "\n",
+    "if (!requireNamespace(\"BiocManager\", quietly = TRUE))\n",
+    "    install.packages(\"BiocManager\")\n",
+    "\n",
+    "BiocManager::install(\"GEOquery\")\n",
+    "library(GEOquery)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "library(GEOquery)\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Now, we are free to access any GEO accession. Note that in the following, I use a file packaged with the GEOquery package. In general, you will use only the GEO accession, as noted in the code comments.\n",
+    "\n",
+    "## Getting Started using GEOquery\n",
+    "There is only one command that is needed, getGEO. This one function interprets its input to determine how to get the data from GEO and then parse the data into useful R data structures. Usage is quite simple. This loads the GEOquery library.\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Parsed with column specification:\n",
+      "cols(\n",
+      "  ID_REF = \u001b[31mcol_character()\u001b[39m,\n",
+      "  IDENTIFIER = \u001b[31mcol_character()\u001b[39m,\n",
+      "  GSM11815 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM11832 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12069 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12083 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12101 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12106 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12274 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12299 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12412 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM11810 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM11827 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12078 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12099 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12269 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12287 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12301 = \u001b[32mcol_double()\u001b[39m,\n",
+      "  GSM12448 = \u001b[32mcol_double()\u001b[39m\n",
+      ")\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "# If you have network access, the more typical way to do this\n",
+    "# would be to use this:\n",
+    "# gds <- getGEO(\"GDS507\")\n",
+    "gds <- getGEO(filename=system.file(\"extdata/GDS507.soft.gz\",package=\"GEOquery\"))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Now, gds contains the R data structure (of class GDS) that represents the GDS507 entry from GEO. You’ll note that the filename used to store the download was output to the screen (but not saved anywhere) for later use to a call to getGEO(filename=...).\n",
+    "We can do the same with any other GEO accession, such as GSM11805, a GEO sample.\n",
+    "\n",
+    "# 3 GEOquery Data Structures\n",
+    "The GEOquery data structures really come in two forms. The first, comprising GDS, GPL, and GSM all behave similarly and accessors have similar effects on each. The fourth GEOquery data structure, GSE is a composite data type made up of a combination of GSM and GPL objects. I will explain the first three together first.\n",
+    "\n",
+    "#### 3.1 The GDS, GSM, and GPL classes\n",
+    "Each of these classes is comprised of a metadata header (taken nearly verbatim from the SOFT format header) and a GEODataTable. The GEODataTable has two simple parts, a Columns part which describes the column headers on the Table part. There is also a show method for each class. For example, using the gsm from above:\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<dl>\n",
+       "\t<dt>$channel_count</dt>\n",
+       "\t\t<dd>'1'</dd>\n",
+       "\t<dt>$comment</dt>\n",
+       "\t\t<dd>'Raw data provided as supplementary file'</dd>\n",
+       "\t<dt>$contact_address</dt>\n",
+       "\t\t<dd>'715 Albany Street, E613B'</dd>\n",
+       "\t<dt>$contact_city</dt>\n",
+       "\t\t<dd>'Boston'</dd>\n",
+       "\t<dt>$contact_country</dt>\n",
+       "\t\t<dd>'USA'</dd>\n",
+       "\t<dt>$contact_department</dt>\n",
+       "\t\t<dd>'Genetics and Genomics'</dd>\n",
+       "</dl>\n"
+      ],
+      "text/latex": [
+       "\\begin{description}\n",
+       "\\item[\\$channel\\_count] '1'\n",
+       "\\item[\\$comment] 'Raw data provided as supplementary file'\n",
+       "\\item[\\$contact\\_address] '715 Albany Street, E613B'\n",
+       "\\item[\\$contact\\_city] 'Boston'\n",
+       "\\item[\\$contact\\_country] 'USA'\n",
+       "\\item[\\$contact\\_department] 'Genetics and Genomics'\n",
+       "\\end{description}\n"
+      ],
+      "text/markdown": [
+       "$channel_count\n",
+       ":   '1'\n",
+       "$comment\n",
+       ":   'Raw data provided as supplementary file'\n",
+       "$contact_address\n",
+       ":   '715 Albany Street, E613B'\n",
+       "$contact_city\n",
+       ":   'Boston'\n",
+       "$contact_country\n",
+       ":   'USA'\n",
+       "$contact_department\n",
+       ":   'Genetics and Genomics'\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "$channel_count\n",
+       "[1] \"1\"\n",
+       "\n",
+       "$comment\n",
+       "[1] \"Raw data provided as supplementary file\"\n",
+       "\n",
+       "$contact_address\n",
+       "[1] \"715 Albany Street, E613B\"\n",
+       "\n",
+       "$contact_city\n",
+       "[1] \"Boston\"\n",
+       "\n",
+       "$contact_country\n",
+       "[1] \"USA\"\n",
+       "\n",
+       "$contact_department\n",
+       "[1] \"Genetics and Genomics\"\n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# Look at gsm metadata:\n",
+    "gsm <- getGEO(filename=system.file(\"extdata/GSM11805.txt.gz\",package=\"GEOquery\"))\n",
+    "head(Meta(gsm))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The GPL class behaves exactly as the GSM class. However, the GDS class has a bit more information associated with the Columns method:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table>\n",
+       "<caption>A data.frame: 17 × 3</caption>\n",
+       "<thead>\n",
+       "\t<tr><th scope=col>sample</th><th scope=col>disease.state</th><th scope=col>individual</th></tr>\n",
+       "\t<tr><th scope=col>&lt;chr&gt;</th><th scope=col>&lt;fct&gt;</th><th scope=col>&lt;fct&gt;</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><td>GSM11815</td><td>RCC   </td><td>035</td></tr>\n",
+       "\t<tr><td>GSM11832</td><td>RCC   </td><td>023</td></tr>\n",
+       "\t<tr><td>GSM12069</td><td>RCC   </td><td>001</td></tr>\n",
+       "\t<tr><td>GSM12083</td><td>RCC   </td><td>005</td></tr>\n",
+       "\t<tr><td>GSM12101</td><td>RCC   </td><td>011</td></tr>\n",
+       "\t<tr><td>GSM12106</td><td>RCC   </td><td>032</td></tr>\n",
+       "\t<tr><td>GSM12274</td><td>RCC   </td><td>2  </td></tr>\n",
+       "\t<tr><td>GSM12299</td><td>RCC   </td><td>3  </td></tr>\n",
+       "\t<tr><td>GSM12412</td><td>RCC   </td><td>4  </td></tr>\n",
+       "\t<tr><td>GSM11810</td><td>normal</td><td>035</td></tr>\n",
+       "\t<tr><td>GSM11827</td><td>normal</td><td>023</td></tr>\n",
+       "\t<tr><td>GSM12078</td><td>normal</td><td>001</td></tr>\n",
+       "\t<tr><td>GSM12099</td><td>normal</td><td>005</td></tr>\n",
+       "\t<tr><td>GSM12269</td><td>normal</td><td>1  </td></tr>\n",
+       "\t<tr><td>GSM12287</td><td>normal</td><td>2  </td></tr>\n",
+       "\t<tr><td>GSM12301</td><td>normal</td><td>3  </td></tr>\n",
+       "\t<tr><td>GSM12448</td><td>normal</td><td>4  </td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A data.frame: 17 × 3\n",
+       "\\begin{tabular}{lll}\n",
+       " sample & disease.state & individual\\\\\n",
+       " <chr> & <fct> & <fct>\\\\\n",
+       "\\hline\n",
+       "\t GSM11815 & RCC    & 035\\\\\n",
+       "\t GSM11832 & RCC    & 023\\\\\n",
+       "\t GSM12069 & RCC    & 001\\\\\n",
+       "\t GSM12083 & RCC    & 005\\\\\n",
+       "\t GSM12101 & RCC    & 011\\\\\n",
+       "\t GSM12106 & RCC    & 032\\\\\n",
+       "\t GSM12274 & RCC    & 2  \\\\\n",
+       "\t GSM12299 & RCC    & 3  \\\\\n",
+       "\t GSM12412 & RCC    & 4  \\\\\n",
+       "\t GSM11810 & normal & 035\\\\\n",
+       "\t GSM11827 & normal & 023\\\\\n",
+       "\t GSM12078 & normal & 001\\\\\n",
+       "\t GSM12099 & normal & 005\\\\\n",
+       "\t GSM12269 & normal & 1  \\\\\n",
+       "\t GSM12287 & normal & 2  \\\\\n",
+       "\t GSM12301 & normal & 3  \\\\\n",
+       "\t GSM12448 & normal & 4  \\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A data.frame: 17 × 3\n",
+       "\n",
+       "| sample &lt;chr&gt; | disease.state &lt;fct&gt; | individual &lt;fct&gt; |\n",
+       "|---|---|---|\n",
+       "| GSM11815 | RCC    | 035 |\n",
+       "| GSM11832 | RCC    | 023 |\n",
+       "| GSM12069 | RCC    | 001 |\n",
+       "| GSM12083 | RCC    | 005 |\n",
+       "| GSM12101 | RCC    | 011 |\n",
+       "| GSM12106 | RCC    | 032 |\n",
+       "| GSM12274 | RCC    | 2   |\n",
+       "| GSM12299 | RCC    | 3   |\n",
+       "| GSM12412 | RCC    | 4   |\n",
+       "| GSM11810 | normal | 035 |\n",
+       "| GSM11827 | normal | 023 |\n",
+       "| GSM12078 | normal | 001 |\n",
+       "| GSM12099 | normal | 005 |\n",
+       "| GSM12269 | normal | 1   |\n",
+       "| GSM12287 | normal | 2   |\n",
+       "| GSM12301 | normal | 3   |\n",
+       "| GSM12448 | normal | 4   |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "   sample   disease.state individual\n",
+       "1  GSM11815 RCC           035       \n",
+       "2  GSM11832 RCC           023       \n",
+       "3  GSM12069 RCC           001       \n",
+       "4  GSM12083 RCC           005       \n",
+       "5  GSM12101 RCC           011       \n",
+       "6  GSM12106 RCC           032       \n",
+       "7  GSM12274 RCC           2         \n",
+       "8  GSM12299 RCC           3         \n",
+       "9  GSM12412 RCC           4         \n",
+       "10 GSM11810 normal        035       \n",
+       "11 GSM11827 normal        023       \n",
+       "12 GSM12078 normal        001       \n",
+       "13 GSM12099 normal        005       \n",
+       "14 GSM12269 normal        1         \n",
+       "15 GSM12287 normal        2         \n",
+       "16 GSM12301 normal        3         \n",
+       "17 GSM12448 normal        4         "
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "Columns(gds)[,1:3]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 3.2 The GSE class\n",
+    "The GSE entity is the most confusing of the GEO entities. A GSE entry can represent an arbitrary number of samples run on an arbitrary number of platforms. The GSE class has a metadata section, just like the other classes. However, it doesn’t have a GEODataTable. Instead, it contains two lists, accessible using the GPLList and GSMList methods, that are each lists of GPL and GSM objects. To show an example:\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Reading file....\n",
+      "\n",
+      "Parsing....\n",
+      "\n",
+      "Found 36 entities...\n",
+      "\n",
+      "GPL96 (1 of 37 entities)\n",
+      "\n",
+      "Warning message:\n",
+      "\"68 parsing failures.\n",
+      "  row     col           expected    actual         file\n",
+      "22216 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22217 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22218 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22219 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22220 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "..... ....... .................. ......... ............\n",
+      "See problems(...) for more details.\n",
+      "\"\n",
+      "GPL97 (2 of 37 entities)\n",
+      "\n",
+      "Warning message:\n",
+      "\"68 parsing failures.\n",
+      "  row     col           expected    actual         file\n",
+      "22578 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22579 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22580 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22581 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22582 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "..... ....... .................. ......... ............\n",
+      "See problems(...) for more details.\n",
+      "\"\n",
+      "GSM11805 (3 of 37 entities)\n",
+      "\n",
+      "GSM11810 (4 of 37 entities)\n",
+      "\n",
+      "GSM11814 (5 of 37 entities)\n",
+      "\n",
+      "GSM11815 (6 of 37 entities)\n",
+      "\n",
+      "GSM11823 (7 of 37 entities)\n",
+      "\n",
+      "GSM11827 (8 of 37 entities)\n",
+      "\n",
+      "GSM11830 (9 of 37 entities)\n",
+      "\n",
+      "GSM11832 (10 of 37 entities)\n",
+      "\n",
+      "GSM12067 (11 of 37 entities)\n",
+      "\n",
+      "GSM12069 (12 of 37 entities)\n",
+      "\n",
+      "GSM12075 (13 of 37 entities)\n",
+      "\n",
+      "GSM12078 (14 of 37 entities)\n",
+      "\n",
+      "GSM12079 (15 of 37 entities)\n",
+      "\n",
+      "GSM12083 (16 of 37 entities)\n",
+      "\n",
+      "GSM12098 (17 of 37 entities)\n",
+      "\n",
+      "GSM12099 (18 of 37 entities)\n",
+      "\n",
+      "GSM12100 (19 of 37 entities)\n",
+      "\n",
+      "GSM12101 (20 of 37 entities)\n",
+      "\n",
+      "GSM12105 (21 of 37 entities)\n",
+      "\n",
+      "GSM12106 (22 of 37 entities)\n",
+      "\n",
+      "GSM12268 (23 of 37 entities)\n",
+      "\n",
+      "GSM12269 (24 of 37 entities)\n",
+      "\n",
+      "GSM12270 (25 of 37 entities)\n",
+      "\n",
+      "GSM12274 (26 of 37 entities)\n",
+      "\n",
+      "GSM12283 (27 of 37 entities)\n",
+      "\n",
+      "GSM12287 (28 of 37 entities)\n",
+      "\n",
+      "GSM12298 (29 of 37 entities)\n",
+      "\n",
+      "GSM12299 (30 of 37 entities)\n",
+      "\n",
+      "GSM12300 (31 of 37 entities)\n",
+      "\n",
+      "GSM12301 (32 of 37 entities)\n",
+      "\n",
+      "GSM12399 (33 of 37 entities)\n",
+      "\n",
+      "GSM12412 (34 of 37 entities)\n",
+      "\n",
+      "GSM12444 (35 of 37 entities)\n",
+      "\n",
+      "GSM12448 (36 of 37 entities)\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<dl>\n",
+       "\t<dt>$contact_address</dt>\n",
+       "\t\t<dd>'715 Albany Street, E613B'</dd>\n",
+       "\t<dt>$contact_city</dt>\n",
+       "\t\t<dd>'Boston'</dd>\n",
+       "\t<dt>$contact_country</dt>\n",
+       "\t\t<dd>'USA'</dd>\n",
+       "\t<dt>$contact_department</dt>\n",
+       "\t\t<dd>'Genetics and Genomics'</dd>\n",
+       "\t<dt>$contact_email</dt>\n",
+       "\t\t<dd>'mlenburg@bu.edu'</dd>\n",
+       "\t<dt>$contact_fax</dt>\n",
+       "\t\t<dd>'617-414-1646'</dd>\n",
+       "</dl>\n"
+      ],
+      "text/latex": [
+       "\\begin{description}\n",
+       "\\item[\\$contact\\_address] '715 Albany Street, E613B'\n",
+       "\\item[\\$contact\\_city] 'Boston'\n",
+       "\\item[\\$contact\\_country] 'USA'\n",
+       "\\item[\\$contact\\_department] 'Genetics and Genomics'\n",
+       "\\item[\\$contact\\_email] 'mlenburg@bu.edu'\n",
+       "\\item[\\$contact\\_fax] '617-414-1646'\n",
+       "\\end{description}\n"
+      ],
+      "text/markdown": [
+       "$contact_address\n",
+       ":   '715 Albany Street, E613B'\n",
+       "$contact_city\n",
+       ":   'Boston'\n",
+       "$contact_country\n",
+       ":   'USA'\n",
+       "$contact_department\n",
+       ":   'Genetics and Genomics'\n",
+       "$contact_email\n",
+       ":   'mlenburg@bu.edu'\n",
+       "$contact_fax\n",
+       ":   '617-414-1646'\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "$contact_address\n",
+       "[1] \"715 Albany Street, E613B\"\n",
+       "\n",
+       "$contact_city\n",
+       "[1] \"Boston\"\n",
+       "\n",
+       "$contact_country\n",
+       "[1] \"USA\"\n",
+       "\n",
+       "$contact_department\n",
+       "[1] \"Genetics and Genomics\"\n",
+       "\n",
+       "$contact_email\n",
+       "[1] \"mlenburg@bu.edu\"\n",
+       "\n",
+       "$contact_fax\n",
+       "[1] \"617-414-1646\"\n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# Again, with good network access, one would do:\n",
+    "# gse <- getGEO(\"GSE781\",GSEMatrix=FALSE)\n",
+    "gse <- getGEO(filename=system.file(\"extdata/GSE781_family.soft.gz\",package=\"GEOquery\"))\n",
+    "head(Meta(gse))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<style>\n",
+       ".list-inline {list-style: none; margin:0; padding: 0}\n",
+       ".list-inline>li {display: inline-block}\n",
+       ".list-inline>li:not(:last-child)::after {content: \"\\00b7\"; padding: 0 .5ex}\n",
+       "</style>\n",
+       "<ol class=list-inline><li>'GSM11805'</li><li>'GSM11810'</li><li>'GSM11814'</li><li>'GSM11815'</li><li>'GSM11823'</li><li>'GSM11827'</li><li>'GSM11830'</li><li>'GSM11832'</li><li>'GSM12067'</li><li>'GSM12069'</li><li>'GSM12075'</li><li>'GSM12078'</li><li>'GSM12079'</li><li>'GSM12083'</li><li>'GSM12098'</li><li>'GSM12099'</li><li>'GSM12100'</li><li>'GSM12101'</li><li>'GSM12105'</li><li>'GSM12106'</li><li>'GSM12268'</li><li>'GSM12269'</li><li>'GSM12270'</li><li>'GSM12274'</li><li>'GSM12283'</li><li>'GSM12287'</li><li>'GSM12298'</li><li>'GSM12299'</li><li>'GSM12300'</li><li>'GSM12301'</li><li>'GSM12399'</li><li>'GSM12412'</li><li>'GSM12444'</li><li>'GSM12448'</li></ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 'GSM11805'\n",
+       "\\item 'GSM11810'\n",
+       "\\item 'GSM11814'\n",
+       "\\item 'GSM11815'\n",
+       "\\item 'GSM11823'\n",
+       "\\item 'GSM11827'\n",
+       "\\item 'GSM11830'\n",
+       "\\item 'GSM11832'\n",
+       "\\item 'GSM12067'\n",
+       "\\item 'GSM12069'\n",
+       "\\item 'GSM12075'\n",
+       "\\item 'GSM12078'\n",
+       "\\item 'GSM12079'\n",
+       "\\item 'GSM12083'\n",
+       "\\item 'GSM12098'\n",
+       "\\item 'GSM12099'\n",
+       "\\item 'GSM12100'\n",
+       "\\item 'GSM12101'\n",
+       "\\item 'GSM12105'\n",
+       "\\item 'GSM12106'\n",
+       "\\item 'GSM12268'\n",
+       "\\item 'GSM12269'\n",
+       "\\item 'GSM12270'\n",
+       "\\item 'GSM12274'\n",
+       "\\item 'GSM12283'\n",
+       "\\item 'GSM12287'\n",
+       "\\item 'GSM12298'\n",
+       "\\item 'GSM12299'\n",
+       "\\item 'GSM12300'\n",
+       "\\item 'GSM12301'\n",
+       "\\item 'GSM12399'\n",
+       "\\item 'GSM12412'\n",
+       "\\item 'GSM12444'\n",
+       "\\item 'GSM12448'\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 'GSM11805'\n",
+       "2. 'GSM11810'\n",
+       "3. 'GSM11814'\n",
+       "4. 'GSM11815'\n",
+       "5. 'GSM11823'\n",
+       "6. 'GSM11827'\n",
+       "7. 'GSM11830'\n",
+       "8. 'GSM11832'\n",
+       "9. 'GSM12067'\n",
+       "10. 'GSM12069'\n",
+       "11. 'GSM12075'\n",
+       "12. 'GSM12078'\n",
+       "13. 'GSM12079'\n",
+       "14. 'GSM12083'\n",
+       "15. 'GSM12098'\n",
+       "16. 'GSM12099'\n",
+       "17. 'GSM12100'\n",
+       "18. 'GSM12101'\n",
+       "19. 'GSM12105'\n",
+       "20. 'GSM12106'\n",
+       "21. 'GSM12268'\n",
+       "22. 'GSM12269'\n",
+       "23. 'GSM12270'\n",
+       "24. 'GSM12274'\n",
+       "25. 'GSM12283'\n",
+       "26. 'GSM12287'\n",
+       "27. 'GSM12298'\n",
+       "28. 'GSM12299'\n",
+       "29. 'GSM12300'\n",
+       "30. 'GSM12301'\n",
+       "31. 'GSM12399'\n",
+       "32. 'GSM12412'\n",
+       "33. 'GSM12444'\n",
+       "34. 'GSM12448'\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       " [1] \"GSM11805\" \"GSM11810\" \"GSM11814\" \"GSM11815\" \"GSM11823\" \"GSM11827\"\n",
+       " [7] \"GSM11830\" \"GSM11832\" \"GSM12067\" \"GSM12069\" \"GSM12075\" \"GSM12078\"\n",
+       "[13] \"GSM12079\" \"GSM12083\" \"GSM12098\" \"GSM12099\" \"GSM12100\" \"GSM12101\"\n",
+       "[19] \"GSM12105\" \"GSM12106\" \"GSM12268\" \"GSM12269\" \"GSM12270\" \"GSM12274\"\n",
+       "[25] \"GSM12283\" \"GSM12287\" \"GSM12298\" \"GSM12299\" \"GSM12300\" \"GSM12301\"\n",
+       "[31] \"GSM12399\" \"GSM12412\" \"GSM12444\" \"GSM12448\""
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/plain": [
+       "An object of class \"GSM\"\n",
+       "channel_count \n",
+       "[1] \"1\"\n",
+       "comment \n",
+       "[1] \"Raw data provided as supplementary file\"\n",
+       "contact_address \n",
+       "[1] \"715 Albany Street, E613B\"\n",
+       "contact_city \n",
+       "[1] \"Boston\"\n",
+       "contact_country \n",
+       "[1] \"USA\"\n",
+       "contact_department \n",
+       "[1] \"Genetics and Genomics\"\n",
+       "contact_email \n",
+       "[1] \"mlenburg@bu.edu\"\n",
+       "contact_fax \n",
+       "[1] \"617-414-1646\"\n",
+       "contact_institute \n",
+       "[1] \"Boston University School of Medicine\"\n",
+       "contact_name \n",
+       "[1] \"Marc,E.,Lenburg\"\n",
+       "contact_phone \n",
+       "[1] \"617-414-1375\"\n",
+       "contact_state \n",
+       "[1] \"MA\"\n",
+       "contact_web_link \n",
+       "[1] \"http://gg.bu.edu\"\n",
+       "contact_zip/postal_code \n",
+       "[1] \"02130\"\n",
+       "data_row_count \n",
+       "[1] \"22283\"\n",
+       "description \n",
+       "[1] \"Age = 70; Gender = Female; Right Kidney; Adjacent Tumor Type = clear cell; Adjacent Tumor Fuhrman Grade = 3; Adjacent Tumor Capsule Penetration = true; Adjacent Tumor Perinephric Fat Invasion = true; Adjacent Tumor Renal Sinus Invasion = false; Adjacent Tumor Renal Vein Invasion = true; Scaling Target = 500; Scaling Factor = 7.09; Raw Q = 2.39; Noise = 2.60; Background = 55.24.\"\n",
+       "[2] \"Keywords = kidney\"                                                                                                                                                                                                                                                                                                                                                                           \n",
+       "[3] \"Keywords = renal\"                                                                                                                                                                                                                                                                                                                                                                            \n",
+       "[4] \"Keywords = RCC\"                                                                                                                                                                                                                                                                                                                                                                              \n",
+       "[5] \"Keywords = carcinoma\"                                                                                                                                                                                                                                                                                                                                                                        \n",
+       "[6] \"Keywords = cancer\"                                                                                                                                                                                                                                                                                                                                                                           \n",
+       "[7] \"Lot batch = 2004638\"                                                                                                                                                                                                                                                                                                                                                                         \n",
+       "geo_accession \n",
+       "[1] \"GSM11805\"\n",
+       "last_update_date \n",
+       "[1] \"May 28 2005\"\n",
+       "molecule_ch1 \n",
+       "[1] \"total RNA\"\n",
+       "organism_ch1 \n",
+       "[1] \"Homo sapiens\"\n",
+       "platform_id \n",
+       "[1] \"GPL96\"\n",
+       "series_id \n",
+       "[1] \"GSE781\"\n",
+       "source_name_ch1 \n",
+       "[1] \"Trizol isolation of total RNA from normal tissue adjacent to Renal Cell Carcinoma\"\n",
+       "status \n",
+       "[1] \"Public on Nov 25 2003\"\n",
+       "submission_date \n",
+       "[1] \"Oct 20 2003\"\n",
+       "supplementary_file \n",
+       "[1] \"ftp://ftp.ncbi.nih.gov/pub/geo/DATA/supplementary/samples/GSM11nnn/GSM11805/GSM11805.CEL.gz\"\n",
+       "title \n",
+       "[1] \"N035 Normal Human Kidney U133A\"\n",
+       "type \n",
+       "[1] \"RNA\"\n",
+       "An object of class \"GEODataTable\"\n",
+       "****** Column Descriptions ******\n",
+       "    Column\n",
+       "1   ID_REF\n",
+       "2    VALUE\n",
+       "3 ABS_CALL\n",
+       "                                                                 Description\n",
+       "1                                                                           \n",
+       "2                         MAS 5.0 Statistical Algorithm (mean scaled to 500)\n",
+       "3 MAS 5.0 Absent, Marginal, Present call  with Alpha1 = 0.05, Alpha2 = 0.065\n",
+       "****** Data Table ******\n",
+       "          ID_REF  VALUE ABS_CALL\n",
+       "1 AFFX-BioB-5_at  953.9        P\n",
+       "2 AFFX-BioB-M_at 2982.8        P\n",
+       "3 AFFX-BioB-3_at 1657.9        P\n",
+       "4 AFFX-BioC-5_at 2652.7        P\n",
+       "5 AFFX-BioC-3_at 2019.5        P\n",
+       "22278 more rows ..."
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "<style>\n",
+       ".list-inline {list-style: none; margin:0; padding: 0}\n",
+       ".list-inline>li {display: inline-block}\n",
+       ".list-inline>li:not(:last-child)::after {content: \"\\00b7\"; padding: 0 .5ex}\n",
+       "</style>\n",
+       "<ol class=list-inline><li>'GPL96'</li><li>'GPL97'</li></ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 'GPL96'\n",
+       "\\item 'GPL97'\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 'GPL96'\n",
+       "2. 'GPL97'\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] \"GPL96\" \"GPL97\""
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# names of all the GSM objects contained in the GSE\n",
+    "names(GSMList(gse))\n",
+    "GSMList(gse)[[1]]\n",
+    "# and the names of the GPLs represented\n",
+    "names(GPLList(gse))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "See below for an additional, preferred method of obtaining GSE information.\n",
+    "\n",
+    "4 Converting to BioConductor ExpressionSets and limma MALists\n",
+    "GEO datasets are (unlike some of the other GEO entities), quite similar to the limma data structure MAList and to the Biobase data structure  ExpressionSet. Therefore, there are two functions, GDS2MA and GDS2eSet that accomplish that task.\n",
+    "\n",
+    "4.1 Getting GSE Series Matrix files as an ExpressionSet\n",
+    "GEO Series are collections of related experiments. In addition to being available as SOFT format files, which are quite large, NCBI GEO has prepared a simpler format file based on tab-delimited text. The getGEO function can handle this format and will parse very large GSEs quite quickly. The data structure returned from this parsing is a list of ExpressionSets. As an example, we download and parse GSE2553."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Found 1 file(s)\n",
+      "\n",
+      "GSE2553_series_matrix.txt.gz\n",
+      "\n",
+      "Parsed with column specification:\n",
+      "cols(\n",
+      "  .default = col_double()\n",
+      ")\n",
+      "\n",
+      "See spec(...) for full column specifications.\n",
+      "\n",
+      "File stored at: \n",
+      "\n",
+      "C:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda/GPL1977.soft\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "$GSE2553_series_matrix.txt.gz\n",
+      "ExpressionSet (storageMode: lockedEnvironment)\n",
+      "assayData: 12600 features, 181 samples \n",
+      "  element names: exprs \n",
+      "protocolData: none\n",
+      "phenoData\n",
+      "  sampleNames: GSM48681 GSM48682 ... GSM48861 (181 total)\n",
+      "  varLabels: title geo_accession ... data_row_count (30 total)\n",
+      "  varMetadata: labelDescription\n",
+      "featureData\n",
+      "  featureNames: 1 2 ... 12600 (12600 total)\n",
+      "  fvarLabels: ID PenAt ... Chimeric_Cluster_IDs (13 total)\n",
+      "  fvarMetadata: Column Description labelDescription\n",
+      "experimentData: use 'experimentData(object)'\n",
+      "  pubMedIds: 16230383 \n",
+      "Annotation: GPL1977 \n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Note that GSEMatrix=TRUE is the default\n",
+    "gse2553 <- getGEO('GSE2553',GSEMatrix=TRUE)\n",
+    "show(gse2553)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 4.2 Converting GDS to an ExpressionSet\n",
+    "Taking our gds object from above, we can simply do:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "File stored at: \n",
+      "\n",
+      "C:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda/GPL97.annot.gz\n",
+      "\n",
+      "Warning message:\n",
+      "\"68 parsing failures.\n",
+      "  row             col           expected    actual         file\n",
+      "22578 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22579 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22580 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22581 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22582 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "..... ............... .................. ......... ............\n",
+      "See problems(...) for more details.\n",
+      "\"\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "ExpressionSet (storageMode: lockedEnvironment)\n",
+       "assayData: 22645 features, 17 samples \n",
+       "  element names: exprs \n",
+       "protocolData: none\n",
+       "phenoData\n",
+       "  sampleNames: GSM11815 GSM11832 ... GSM12448 (17 total)\n",
+       "  varLabels: sample disease.state individual description\n",
+       "  varMetadata: labelDescription\n",
+       "featureData\n",
+       "  featureNames: 200000_s_at 200001_at ... AFFX-TrpnX-M_at (22645 total)\n",
+       "  fvarLabels: ID Gene title ... GO:Component ID (21 total)\n",
+       "  fvarMetadata: Column labelDescription\n",
+       "experimentData: use 'experimentData(object)'\n",
+       "  pubMedIds: 14641932 \n",
+       "Annotation:  "
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table>\n",
+       "<caption>A data.frame: 17 × 3</caption>\n",
+       "<thead>\n",
+       "\t<tr><th></th><th scope=col>sample</th><th scope=col>disease.state</th><th scope=col>individual</th></tr>\n",
+       "\t<tr><th></th><th scope=col>&lt;chr&gt;</th><th scope=col>&lt;fct&gt;</th><th scope=col>&lt;fct&gt;</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><th scope=row>GSM11815</th><td>GSM11815</td><td>RCC   </td><td>035</td></tr>\n",
+       "\t<tr><th scope=row>GSM11832</th><td>GSM11832</td><td>RCC   </td><td>023</td></tr>\n",
+       "\t<tr><th scope=row>GSM12069</th><td>GSM12069</td><td>RCC   </td><td>001</td></tr>\n",
+       "\t<tr><th scope=row>GSM12083</th><td>GSM12083</td><td>RCC   </td><td>005</td></tr>\n",
+       "\t<tr><th scope=row>GSM12101</th><td>GSM12101</td><td>RCC   </td><td>011</td></tr>\n",
+       "\t<tr><th scope=row>GSM12106</th><td>GSM12106</td><td>RCC   </td><td>032</td></tr>\n",
+       "\t<tr><th scope=row>GSM12274</th><td>GSM12274</td><td>RCC   </td><td>2  </td></tr>\n",
+       "\t<tr><th scope=row>GSM12299</th><td>GSM12299</td><td>RCC   </td><td>3  </td></tr>\n",
+       "\t<tr><th scope=row>GSM12412</th><td>GSM12412</td><td>RCC   </td><td>4  </td></tr>\n",
+       "\t<tr><th scope=row>GSM11810</th><td>GSM11810</td><td>normal</td><td>035</td></tr>\n",
+       "\t<tr><th scope=row>GSM11827</th><td>GSM11827</td><td>normal</td><td>023</td></tr>\n",
+       "\t<tr><th scope=row>GSM12078</th><td>GSM12078</td><td>normal</td><td>001</td></tr>\n",
+       "\t<tr><th scope=row>GSM12099</th><td>GSM12099</td><td>normal</td><td>005</td></tr>\n",
+       "\t<tr><th scope=row>GSM12269</th><td>GSM12269</td><td>normal</td><td>1  </td></tr>\n",
+       "\t<tr><th scope=row>GSM12287</th><td>GSM12287</td><td>normal</td><td>2  </td></tr>\n",
+       "\t<tr><th scope=row>GSM12301</th><td>GSM12301</td><td>normal</td><td>3  </td></tr>\n",
+       "\t<tr><th scope=row>GSM12448</th><td>GSM12448</td><td>normal</td><td>4  </td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A data.frame: 17 × 3\n",
+       "\\begin{tabular}{r|lll}\n",
+       "  & sample & disease.state & individual\\\\\n",
+       "  & <chr> & <fct> & <fct>\\\\\n",
+       "\\hline\n",
+       "\tGSM11815 & GSM11815 & RCC    & 035\\\\\n",
+       "\tGSM11832 & GSM11832 & RCC    & 023\\\\\n",
+       "\tGSM12069 & GSM12069 & RCC    & 001\\\\\n",
+       "\tGSM12083 & GSM12083 & RCC    & 005\\\\\n",
+       "\tGSM12101 & GSM12101 & RCC    & 011\\\\\n",
+       "\tGSM12106 & GSM12106 & RCC    & 032\\\\\n",
+       "\tGSM12274 & GSM12274 & RCC    & 2  \\\\\n",
+       "\tGSM12299 & GSM12299 & RCC    & 3  \\\\\n",
+       "\tGSM12412 & GSM12412 & RCC    & 4  \\\\\n",
+       "\tGSM11810 & GSM11810 & normal & 035\\\\\n",
+       "\tGSM11827 & GSM11827 & normal & 023\\\\\n",
+       "\tGSM12078 & GSM12078 & normal & 001\\\\\n",
+       "\tGSM12099 & GSM12099 & normal & 005\\\\\n",
+       "\tGSM12269 & GSM12269 & normal & 1  \\\\\n",
+       "\tGSM12287 & GSM12287 & normal & 2  \\\\\n",
+       "\tGSM12301 & GSM12301 & normal & 3  \\\\\n",
+       "\tGSM12448 & GSM12448 & normal & 4  \\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A data.frame: 17 × 3\n",
+       "\n",
+       "| <!--/--> | sample &lt;chr&gt; | disease.state &lt;fct&gt; | individual &lt;fct&gt; |\n",
+       "|---|---|---|---|\n",
+       "| GSM11815 | GSM11815 | RCC    | 035 |\n",
+       "| GSM11832 | GSM11832 | RCC    | 023 |\n",
+       "| GSM12069 | GSM12069 | RCC    | 001 |\n",
+       "| GSM12083 | GSM12083 | RCC    | 005 |\n",
+       "| GSM12101 | GSM12101 | RCC    | 011 |\n",
+       "| GSM12106 | GSM12106 | RCC    | 032 |\n",
+       "| GSM12274 | GSM12274 | RCC    | 2   |\n",
+       "| GSM12299 | GSM12299 | RCC    | 3   |\n",
+       "| GSM12412 | GSM12412 | RCC    | 4   |\n",
+       "| GSM11810 | GSM11810 | normal | 035 |\n",
+       "| GSM11827 | GSM11827 | normal | 023 |\n",
+       "| GSM12078 | GSM12078 | normal | 001 |\n",
+       "| GSM12099 | GSM12099 | normal | 005 |\n",
+       "| GSM12269 | GSM12269 | normal | 1   |\n",
+       "| GSM12287 | GSM12287 | normal | 2   |\n",
+       "| GSM12301 | GSM12301 | normal | 3   |\n",
+       "| GSM12448 | GSM12448 | normal | 4   |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "         sample   disease.state individual\n",
+       "GSM11815 GSM11815 RCC           035       \n",
+       "GSM11832 GSM11832 RCC           023       \n",
+       "GSM12069 GSM12069 RCC           001       \n",
+       "GSM12083 GSM12083 RCC           005       \n",
+       "GSM12101 GSM12101 RCC           011       \n",
+       "GSM12106 GSM12106 RCC           032       \n",
+       "GSM12274 GSM12274 RCC           2         \n",
+       "GSM12299 GSM12299 RCC           3         \n",
+       "GSM12412 GSM12412 RCC           4         \n",
+       "GSM11810 GSM11810 normal        035       \n",
+       "GSM11827 GSM11827 normal        023       \n",
+       "GSM12078 GSM12078 normal        001       \n",
+       "GSM12099 GSM12099 normal        005       \n",
+       "GSM12269 GSM12269 normal        1         \n",
+       "GSM12287 GSM12287 normal        2         \n",
+       "GSM12301 GSM12301 normal        3         \n",
+       "GSM12448 GSM12448 normal        4         "
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "eset <- GDS2eSet(gds,do.log2=TRUE)\n",
+    "eset\n",
+    "\n",
+    "pData(eset)[,1:3]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Now, eset is an ExpressionSet that contains the same information as in the GEO dataset, including the sample information, which we can see here:\n",
+    "\n",
+    "### 4.3 Converting GDS to an MAList\n",
+    "No annotation information (called platform information by GEO) was retrieved from because ExpressionSet does not contain slots for gene information, typically. However, it is easy to obtain this information. First, we need to know what platform this GDS used. Then, another call to  getGEO will get us what we need."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "'GPL97'"
+      ],
+      "text/latex": [
+       "'GPL97'"
+      ],
+      "text/markdown": [
+       "'GPL97'"
+      ],
+      "text/plain": [
+       "[1] \"GPL97\""
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "#get the platform from the GDS metadata\n",
+    "Meta(gds)$platform"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Warning message:\n",
+      "\"Duplicated column names deduplicated: 'GO:Function' => 'GO:Function_1' [19], 'GO:Process' => 'GO:Process_1' [20], 'GO:Component' => 'GO:Component_1' [21]\"\n",
+      "Warning message:\n",
+      "\"68 parsing failures.\n",
+      "  row             col           expected    actual         file\n",
+      "22578 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22579 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22580 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22581 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22582 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "..... ............... .................. ......... ............\n",
+      "See problems(...) for more details.\n",
+      "\"\n"
+     ]
+    }
+   ],
+   "source": [
+    "#So use this information in a call to getGEO\n",
+    "gpl <- getGEO(filename=system.file(\"extdata/GPL97.annot.gz\",package=\"GEOquery\"))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "So, gpl now contains the information for GPL5 from GEO. Unlike ExpressionSet, the limma MAList does store gene annotation information, so we can use our newly created gpl of class GPL in a call to GDS2MA like so:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "Using locally cached version of GPL97 found here:\n",
+      "C:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda/GPL97.annot.gz \n",
+      "\n",
+      "Warning message:\n",
+      "\"68 parsing failures.\n",
+      "  row             col           expected    actual         file\n",
+      "22578 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22579 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22580 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22581 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22582 Platform_SPOTID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "..... ............... .................. ......... ............\n",
+      "See problems(...) for more details.\n",
+      "\"\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "'MAList'"
+      ],
+      "text/latex": [
+       "'MAList'"
+      ],
+      "text/markdown": [
+       "'MAList'"
+      ],
+      "text/plain": [
+       "[1] \"MAList\"\n",
+       "attr(,\"package\")\n",
+       "[1] \"limma\""
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "MA <- GDS2MA(gds,GPL=gpl)\n",
+    "class(MA)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Now, MA is of class MAList and contains not only the data, but the sample information and gene information associated with GDS507.\n",
+    "\n",
+    "### 4.4 Converting GSE to an ExpressionSet\n",
+    "First, make sure that using the method described above in the section ``Getting GSE Series Matrix files as an ExpressionSet’’ for using GSE Series Matrix files is not sufficient for the task, as it is much faster and simpler. If it is not (i.e., other columns from each GSM are needed), then this method will be needed.\n",
+    "\n",
+    "Converting a GSE object to an ExpressionSet object currently takes a bit of R data manipulation due to the varied data that can be stored in a  GSE and the underlying GSM and GPL objects. However, using a simple example will hopefully be illustrative of the technique.\n",
+    "\n",
+    "First, we need to make sure that all of the GSMs are from the same platform:\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<dl>\n",
+       "\t<dt>$GSM11805</dt>\n",
+       "\t\t<dd>'GPL96'</dd>\n",
+       "\t<dt>$GSM11810</dt>\n",
+       "\t\t<dd>'GPL97'</dd>\n",
+       "\t<dt>$GSM11814</dt>\n",
+       "\t\t<dd>'GPL96'</dd>\n",
+       "\t<dt>$GSM11815</dt>\n",
+       "\t\t<dd>'GPL97'</dd>\n",
+       "\t<dt>$GSM11823</dt>\n",
+       "\t\t<dd>'GPL96'</dd>\n",
+       "\t<dt>$GSM11827</dt>\n",
+       "\t\t<dd>'GPL97'</dd>\n",
+       "</dl>\n"
+      ],
+      "text/latex": [
+       "\\begin{description}\n",
+       "\\item[\\$GSM11805] 'GPL96'\n",
+       "\\item[\\$GSM11810] 'GPL97'\n",
+       "\\item[\\$GSM11814] 'GPL96'\n",
+       "\\item[\\$GSM11815] 'GPL97'\n",
+       "\\item[\\$GSM11823] 'GPL96'\n",
+       "\\item[\\$GSM11827] 'GPL97'\n",
+       "\\end{description}\n"
+      ],
+      "text/markdown": [
+       "$GSM11805\n",
+       ":   'GPL96'\n",
+       "$GSM11810\n",
+       ":   'GPL97'\n",
+       "$GSM11814\n",
+       ":   'GPL96'\n",
+       "$GSM11815\n",
+       ":   'GPL97'\n",
+       "$GSM11823\n",
+       ":   'GPL96'\n",
+       "$GSM11827\n",
+       ":   'GPL97'\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "$GSM11805\n",
+       "[1] \"GPL96\"\n",
+       "\n",
+       "$GSM11810\n",
+       "[1] \"GPL97\"\n",
+       "\n",
+       "$GSM11814\n",
+       "[1] \"GPL96\"\n",
+       "\n",
+       "$GSM11815\n",
+       "[1] \"GPL97\"\n",
+       "\n",
+       "$GSM11823\n",
+       "[1] \"GPL96\"\n",
+       "\n",
+       "$GSM11827\n",
+       "[1] \"GPL97\"\n"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "gsmplatforms <- lapply(GSMList(gse),function(x) {Meta(x)$platform_id})\n",
+    "head(gsmplatforms)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Indeed, there are two GPLs, GPL96 and GPL97, as their platforms (which we could have determined by looking at the GPLList for gse). We can filter the original GSMList to include only those GSMs with the GPL96 platform and use this list for further processing"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "17"
+      ],
+      "text/latex": [
+       "17"
+      ],
+      "text/markdown": [
+       "17"
+      ],
+      "text/plain": [
+       "[1] 17"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "gsmlist = Filter(function(gsm) {Meta(gsm)$platform_id=='GPL96'},GSMList(gse))\n",
+    "length(gsmlist)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "So, now we would like to know what column represents the data that we would like to extract. Looking at the first few rows of the Table of a single GSM will likely give us an idea (and by the way, GEO uses a convention that the column that contains the single measurement for each array is called the VALUE column, which we could use if we don’t know what other column is most relevant)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table>\n",
+       "<caption>A data.frame: 5 × 3</caption>\n",
+       "<thead>\n",
+       "\t<tr><th></th><th scope=col>ID_REF</th><th scope=col>VALUE</th><th scope=col>ABS_CALL</th></tr>\n",
+       "\t<tr><th></th><th scope=col>&lt;chr&gt;</th><th scope=col>&lt;dbl&gt;</th><th scope=col>&lt;chr&gt;</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><th scope=row>1</th><td>AFFX-BioB-5_at</td><td> 953.9</td><td>P</td></tr>\n",
+       "\t<tr><th scope=row>2</th><td>AFFX-BioB-M_at</td><td>2982.8</td><td>P</td></tr>\n",
+       "\t<tr><th scope=row>3</th><td>AFFX-BioB-3_at</td><td>1657.9</td><td>P</td></tr>\n",
+       "\t<tr><th scope=row>4</th><td>AFFX-BioC-5_at</td><td>2652.7</td><td>P</td></tr>\n",
+       "\t<tr><th scope=row>5</th><td>AFFX-BioC-3_at</td><td>2019.5</td><td>P</td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A data.frame: 5 × 3\n",
+       "\\begin{tabular}{r|lll}\n",
+       "  & ID\\_REF & VALUE & ABS\\_CALL\\\\\n",
+       "  & <chr> & <dbl> & <chr>\\\\\n",
+       "\\hline\n",
+       "\t1 & AFFX-BioB-5\\_at &  953.9 & P\\\\\n",
+       "\t2 & AFFX-BioB-M\\_at & 2982.8 & P\\\\\n",
+       "\t3 & AFFX-BioB-3\\_at & 1657.9 & P\\\\\n",
+       "\t4 & AFFX-BioC-5\\_at & 2652.7 & P\\\\\n",
+       "\t5 & AFFX-BioC-3\\_at & 2019.5 & P\\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A data.frame: 5 × 3\n",
+       "\n",
+       "| <!--/--> | ID_REF &lt;chr&gt; | VALUE &lt;dbl&gt; | ABS_CALL &lt;chr&gt; |\n",
+       "|---|---|---|---|\n",
+       "| 1 | AFFX-BioB-5_at |  953.9 | P |\n",
+       "| 2 | AFFX-BioB-M_at | 2982.8 | P |\n",
+       "| 3 | AFFX-BioB-3_at | 1657.9 | P |\n",
+       "| 4 | AFFX-BioC-5_at | 2652.7 | P |\n",
+       "| 5 | AFFX-BioC-3_at | 2019.5 | P |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "  ID_REF         VALUE  ABS_CALL\n",
+       "1 AFFX-BioB-5_at  953.9 P       \n",
+       "2 AFFX-BioB-M_at 2982.8 P       \n",
+       "3 AFFX-BioB-3_at 1657.9 P       \n",
+       "4 AFFX-BioC-5_at 2652.7 P       \n",
+       "5 AFFX-BioC-3_at 2019.5 P       "
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table>\n",
+       "<caption>A data.frame: 5 × 2</caption>\n",
+       "<thead>\n",
+       "\t<tr><th></th><th scope=col>Column</th><th scope=col>Description</th></tr>\n",
+       "\t<tr><th></th><th scope=col>&lt;chr&gt;</th><th scope=col>&lt;chr&gt;</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><th scope=row>1</th><td>ID_REF  </td><td>                                                                          </td></tr>\n",
+       "\t<tr><th scope=row>2</th><td>VALUE   </td><td>MAS 5.0 Statistical Algorithm (mean scaled to 500)                        </td></tr>\n",
+       "\t<tr><th scope=row>3</th><td>ABS_CALL</td><td>MAS 5.0 Absent, Marginal, Present call  with Alpha1 = 0.05, Alpha2 = 0.065</td></tr>\n",
+       "\t<tr><th scope=row>NA</th><td>NA      </td><td>NA                                                                        </td></tr>\n",
+       "\t<tr><th scope=row>NA.1</th><td>NA      </td><td>NA                                                                        </td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A data.frame: 5 × 2\n",
+       "\\begin{tabular}{r|ll}\n",
+       "  & Column & Description\\\\\n",
+       "  & <chr> & <chr>\\\\\n",
+       "\\hline\n",
+       "\t1 & ID\\_REF   &                                                                           \\\\\n",
+       "\t2 & VALUE    & MAS 5.0 Statistical Algorithm (mean scaled to 500)                        \\\\\n",
+       "\t3 & ABS\\_CALL & MAS 5.0 Absent, Marginal, Present call  with Alpha1 = 0.05, Alpha2 = 0.065\\\\\n",
+       "\tNA & NA       & NA                                                                        \\\\\n",
+       "\tNA.1 & NA       & NA                                                                        \\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A data.frame: 5 × 2\n",
+       "\n",
+       "| <!--/--> | Column &lt;chr&gt; | Description &lt;chr&gt; |\n",
+       "|---|---|---|\n",
+       "| 1 | ID_REF   | <!----> |\n",
+       "| 2 | VALUE    | MAS 5.0 Statistical Algorithm (mean scaled to 500)                         |\n",
+       "| 3 | ABS_CALL | MAS 5.0 Absent, Marginal, Present call  with Alpha1 = 0.05, Alpha2 = 0.065 |\n",
+       "| NA | NA       | NA                                                                         |\n",
+       "| NA.1 | NA       | NA                                                                         |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "     Column  \n",
+       "1    ID_REF  \n",
+       "2    VALUE   \n",
+       "3    ABS_CALL\n",
+       "NA   NA      \n",
+       "NA.1 NA      \n",
+       "     Description                                                               \n",
+       "1                                                                              \n",
+       "2    MAS 5.0 Statistical Algorithm (mean scaled to 500)                        \n",
+       "3    MAS 5.0 Absent, Marginal, Present call  with Alpha1 = 0.05, Alpha2 = 0.065\n",
+       "NA   NA                                                                        \n",
+       "NA.1 NA                                                                        "
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "Table(gsmlist[[1]])[1:5,]\n",
+    "\n",
+    "# and get the column descriptions\n",
+    "Columns(gsmlist[[1]])[1:5,]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "\n",
+    "We will indeed use the VALUE column. We then want to make a matrix of these values like so:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table>\n",
+       "<caption>A matrix: 5 × 17 of type dbl</caption>\n",
+       "<thead>\n",
+       "\t<tr><th scope=col>GSM11805</th><th scope=col>GSM11814</th><th scope=col>GSM11823</th><th scope=col>GSM11830</th><th scope=col>GSM12067</th><th scope=col>GSM12075</th><th scope=col>GSM12079</th><th scope=col>GSM12098</th><th scope=col>GSM12100</th><th scope=col>GSM12105</th><th scope=col>GSM12268</th><th scope=col>GSM12270</th><th scope=col>GSM12283</th><th scope=col>GSM12298</th><th scope=col>GSM12300</th><th scope=col>GSM12399</th><th scope=col>GSM12444</th></tr>\n",
+       "</thead>\n",
+       "<tbody>\n",
+       "\t<tr><td>10.926963</td><td>11.105254</td><td>11.275019</td><td>11.438636</td><td>11.424376</td><td>11.222795</td><td>11.469845</td><td>10.823367</td><td>10.835971</td><td>10.810893</td><td>11.062653</td><td>10.323055</td><td>11.181028</td><td>11.566387</td><td>11.078151</td><td>11.535178</td><td>11.105450</td></tr>\n",
+       "\t<tr><td> 5.749534</td><td> 7.908092</td><td> 7.093814</td><td> 7.514122</td><td> 7.901470</td><td> 6.407693</td><td> 5.165912</td><td> 6.556123</td><td> 8.207014</td><td> 6.816344</td><td> 6.563768</td><td> 7.353147</td><td> 5.770829</td><td> 6.912889</td><td> 4.812498</td><td> 7.471675</td><td> 7.488644</td></tr>\n",
+       "\t<tr><td> 7.066089</td><td> 7.750205</td><td> 7.244126</td><td> 7.962896</td><td> 7.337176</td><td> 6.569856</td><td> 7.477354</td><td> 7.708739</td><td> 7.428779</td><td> 7.754888</td><td> 7.126188</td><td> 8.742815</td><td> 7.339850</td><td> 7.602142</td><td> 7.383704</td><td> 7.432959</td><td> 7.381110</td></tr>\n",
+       "\t<tr><td>12.660353</td><td>12.479755</td><td>12.215897</td><td>11.458355</td><td>11.397568</td><td>12.529870</td><td>12.240046</td><td>12.336534</td><td>11.762839</td><td>11.237509</td><td>12.412490</td><td>11.213408</td><td>12.678380</td><td>12.232901</td><td>12.090939</td><td>11.421802</td><td>12.172834</td></tr>\n",
+       "\t<tr><td> 6.195741</td><td> 6.061776</td><td> 6.565293</td><td> 6.583459</td><td> 6.877744</td><td> 6.652486</td><td> 3.981853</td><td> 5.501439</td><td> 6.247928</td><td> 6.017922</td><td> 6.525129</td><td> 6.683696</td><td> 5.918863</td><td> 5.837943</td><td> 6.281698</td><td> 5.419539</td><td> 5.469235</td></tr>\n",
+       "</tbody>\n",
+       "</table>\n"
+      ],
+      "text/latex": [
+       "A matrix: 5 × 17 of type dbl\n",
+       "\\begin{tabular}{lllllllllllllllll}\n",
+       " GSM11805 & GSM11814 & GSM11823 & GSM11830 & GSM12067 & GSM12075 & GSM12079 & GSM12098 & GSM12100 & GSM12105 & GSM12268 & GSM12270 & GSM12283 & GSM12298 & GSM12300 & GSM12399 & GSM12444\\\\\n",
+       "\\hline\n",
+       "\t 10.926963 & 11.105254 & 11.275019 & 11.438636 & 11.424376 & 11.222795 & 11.469845 & 10.823367 & 10.835971 & 10.810893 & 11.062653 & 10.323055 & 11.181028 & 11.566387 & 11.078151 & 11.535178 & 11.105450\\\\\n",
+       "\t  5.749534 &  7.908092 &  7.093814 &  7.514122 &  7.901470 &  6.407693 &  5.165912 &  6.556123 &  8.207014 &  6.816344 &  6.563768 &  7.353147 &  5.770829 &  6.912889 &  4.812498 &  7.471675 &  7.488644\\\\\n",
+       "\t  7.066089 &  7.750205 &  7.244126 &  7.962896 &  7.337176 &  6.569856 &  7.477354 &  7.708739 &  7.428779 &  7.754888 &  7.126188 &  8.742815 &  7.339850 &  7.602142 &  7.383704 &  7.432959 &  7.381110\\\\\n",
+       "\t 12.660353 & 12.479755 & 12.215897 & 11.458355 & 11.397568 & 12.529870 & 12.240046 & 12.336534 & 11.762839 & 11.237509 & 12.412490 & 11.213408 & 12.678380 & 12.232901 & 12.090939 & 11.421802 & 12.172834\\\\\n",
+       "\t  6.195741 &  6.061776 &  6.565293 &  6.583459 &  6.877744 &  6.652486 &  3.981853 &  5.501439 &  6.247928 &  6.017922 &  6.525129 &  6.683696 &  5.918863 &  5.837943 &  6.281698 &  5.419539 &  5.469235\\\\\n",
+       "\\end{tabular}\n"
+      ],
+      "text/markdown": [
+       "\n",
+       "A matrix: 5 × 17 of type dbl\n",
+       "\n",
+       "| GSM11805 | GSM11814 | GSM11823 | GSM11830 | GSM12067 | GSM12075 | GSM12079 | GSM12098 | GSM12100 | GSM12105 | GSM12268 | GSM12270 | GSM12283 | GSM12298 | GSM12300 | GSM12399 | GSM12444 |\n",
+       "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n",
+       "| 10.926963 | 11.105254 | 11.275019 | 11.438636 | 11.424376 | 11.222795 | 11.469845 | 10.823367 | 10.835971 | 10.810893 | 11.062653 | 10.323055 | 11.181028 | 11.566387 | 11.078151 | 11.535178 | 11.105450 |\n",
+       "|  5.749534 |  7.908092 |  7.093814 |  7.514122 |  7.901470 |  6.407693 |  5.165912 |  6.556123 |  8.207014 |  6.816344 |  6.563768 |  7.353147 |  5.770829 |  6.912889 |  4.812498 |  7.471675 |  7.488644 |\n",
+       "|  7.066089 |  7.750205 |  7.244126 |  7.962896 |  7.337176 |  6.569856 |  7.477354 |  7.708739 |  7.428779 |  7.754888 |  7.126188 |  8.742815 |  7.339850 |  7.602142 |  7.383704 |  7.432959 |  7.381110 |\n",
+       "| 12.660353 | 12.479755 | 12.215897 | 11.458355 | 11.397568 | 12.529870 | 12.240046 | 12.336534 | 11.762839 | 11.237509 | 12.412490 | 11.213408 | 12.678380 | 12.232901 | 12.090939 | 11.421802 | 12.172834 |\n",
+       "|  6.195741 |  6.061776 |  6.565293 |  6.583459 |  6.877744 |  6.652486 |  3.981853 |  5.501439 |  6.247928 |  6.017922 |  6.525129 |  6.683696 |  5.918863 |  5.837943 |  6.281698 |  5.419539 |  5.469235 |\n",
+       "\n"
+      ],
+      "text/plain": [
+       "     GSM11805  GSM11814  GSM11823  GSM11830  GSM12067  GSM12075  GSM12079 \n",
+       "[1,] 10.926963 11.105254 11.275019 11.438636 11.424376 11.222795 11.469845\n",
+       "[2,]  5.749534  7.908092  7.093814  7.514122  7.901470  6.407693  5.165912\n",
+       "[3,]  7.066089  7.750205  7.244126  7.962896  7.337176  6.569856  7.477354\n",
+       "[4,] 12.660353 12.479755 12.215897 11.458355 11.397568 12.529870 12.240046\n",
+       "[5,]  6.195741  6.061776  6.565293  6.583459  6.877744  6.652486  3.981853\n",
+       "     GSM12098  GSM12100  GSM12105  GSM12268  GSM12270  GSM12283  GSM12298 \n",
+       "[1,] 10.823367 10.835971 10.810893 11.062653 10.323055 11.181028 11.566387\n",
+       "[2,]  6.556123  8.207014  6.816344  6.563768  7.353147  5.770829  6.912889\n",
+       "[3,]  7.708739  7.428779  7.754888  7.126188  8.742815  7.339850  7.602142\n",
+       "[4,] 12.336534 11.762839 11.237509 12.412490 11.213408 12.678380 12.232901\n",
+       "[5,]  5.501439  6.247928  6.017922  6.525129  6.683696  5.918863  5.837943\n",
+       "     GSM12300  GSM12399  GSM12444 \n",
+       "[1,] 11.078151 11.535178 11.105450\n",
+       "[2,]  4.812498  7.471675  7.488644\n",
+       "[3,]  7.383704  7.432959  7.381110\n",
+       "[4,] 12.090939 11.421802 12.172834\n",
+       "[5,]  6.281698  5.419539  5.469235"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# get the probeset ordering\n",
+    "probesets <- Table(GPLList(gse)[[1]])$ID\n",
+    "# make the data matrix from the VALUE columns from each GSM\n",
+    "# being careful to match the order of the probesets in the platform\n",
+    "# with those in the GSMs\n",
+    "data.matrix <- do.call('cbind',lapply(gsmlist,function(x) \n",
+    "                                      {tab <- Table(x)\n",
+    "                                       mymatch <- match(probesets,tab$ID_REF)\n",
+    "                                       return(tab$VALUE[mymatch])\n",
+    "                                     }))\n",
+    "data.matrix <- apply(data.matrix,2,function(x) {as.numeric(as.character(x))})\n",
+    "data.matrix <- log2(data.matrix)\n",
+    "data.matrix[1:5,]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Note that we do a match to make sure that the values and the platform information are in the same order. Finally, to make the ExpressionSet object:\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "ExpressionSet (storageMode: lockedEnvironment)\n",
+       "assayData: 22283 features, 17 samples \n",
+       "  element names: exprs \n",
+       "protocolData: none\n",
+       "phenoData\n",
+       "  sampleNames: GSM11805 GSM11814 ... GSM12444 (17 total)\n",
+       "  varLabels: samples\n",
+       "  varMetadata: labelDescription\n",
+       "featureData: none\n",
+       "experimentData: use 'experimentData(object)'\n",
+       "Annotation:  "
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "require(Biobase)\n",
+    "# go through the necessary steps to make a compliant ExpressionSet\n",
+    "rownames(data.matrix) <- probesets\n",
+    "colnames(data.matrix) <- names(gsmlist)\n",
+    "pdata <- data.frame(samples=names(gsmlist))\n",
+    "rownames(pdata) <- names(gsmlist)\n",
+    "pheno <- as(pdata,\"AnnotatedDataFrame\")\n",
+    "eset2 <- new('ExpressionSet',exprs=data.matrix,phenoData=pheno)\n",
+    "eset2"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "So, using a combination of lapply on the GSMList, one can extract as many columns of interest as necessary to build the data structure of choice. Because the GSM data from the GEO website are fully downloaded and included in the GSE object, one can extract foreground and background as well as quality for two-channel arrays, for example. Getting array annotation is also a bit more complicated, but by replacing ``platform’’ in the lapply call to get platform information for each array, one can get other information associated with each array.\n",
+    "\n",
+    "# 5 Accessing Raw Data from GEO\n",
+    "NCBI GEO accepts (but has not always required) raw data such as .CEL files, .CDF files, images, etc. Sometimes, it is useful to get quick access to such data. A single function, getGEOSuppFiles, can take as an argument a GEO accession and will download all the raw data associate with that accession. By default, the function will create a directory in the current working directory to store the raw data for the chosen GEO accession. Combining a simple sapply statement or other loop structure with getGEOSuppFiles makes for a very simple way to get gobs of raw data quickly and easily without needing to know the specifics of GEO raw data URLs.\n",
+    "\n",
+    "# 6 Use Cases\n",
+    "GEOquery can be quite powerful for gathering a lot of data quickly. A few examples can be useful to show how this might be done for data mining purposes.\n",
+    "\n",
+    "### 6.1 Getting all Series Records for a Given Platform\n",
+    "For data mining purposes, it is sometimes useful to be able to pull all the GSE records for a given platform. GEOquery makes this very easy, but a little bit of knowledge of the GPL record is necessary to get started. The GPL record contains both the GSE and GSM accessions that reference it. Some code is useful to illustrate the point:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "File stored at: \n",
+      "\n",
+      "C:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda/GPL97.soft\n",
+      "\n",
+      "Warning message:\n",
+      "\"68 parsing failures.\n",
+      "  row     col           expected    actual         file\n",
+      "22578 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22579 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22580 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22581 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "22582 SPOT_ID 1/0/T/F/TRUE/FALSE --Control literal data\n",
+      "..... ....... .................. ......... ............\n",
+      "See problems(...) for more details.\n",
+      "\"\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "'[HG-U133B] Affymetrix Human Genome U133B Array'"
+      ],
+      "text/latex": [
+       "'{[}HG-U133B{]} Affymetrix Human Genome U133B Array'"
+      ],
+      "text/markdown": [
+       "'[HG-U133B] Affymetrix Human Genome U133B Array'"
+      ],
+      "text/plain": [
+       "[1] \"[HG-U133B] Affymetrix Human Genome U133B Array\""
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "<style>\n",
+       ".list-inline {list-style: none; margin:0; padding: 0}\n",
+       ".list-inline>li {display: inline-block}\n",
+       ".list-inline>li:not(:last-child)::after {content: \"\\00b7\"; padding: 0 .5ex}\n",
+       "</style>\n",
+       "<ol class=list-inline><li>'GSE362'</li><li>'GSE473'</li><li>'GSE620'</li><li>'GSE674'</li><li>'GSE781'</li><li>'GSE907'</li></ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 'GSE362'\n",
+       "\\item 'GSE473'\n",
+       "\\item 'GSE620'\n",
+       "\\item 'GSE674'\n",
+       "\\item 'GSE781'\n",
+       "\\item 'GSE907'\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 'GSE362'\n",
+       "2. 'GSE473'\n",
+       "3. 'GSE620'\n",
+       "4. 'GSE674'\n",
+       "5. 'GSE781'\n",
+       "6. 'GSE907'\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] \"GSE362\" \"GSE473\" \"GSE620\" \"GSE674\" \"GSE781\" \"GSE907\""
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "165"
+      ],
+      "text/latex": [
+       "165"
+      ],
+      "text/markdown": [
+       "165"
+      ],
+      "text/plain": [
+       "[1] 165"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "<style>\n",
+       ".list-inline {list-style: none; margin:0; padding: 0}\n",
+       ".list-inline>li {display: inline-block}\n",
+       ".list-inline>li:not(:last-child)::after {content: \"\\00b7\"; padding: 0 .5ex}\n",
+       "</style>\n",
+       "<ol class=list-inline><li>'GSM3922'</li><li>'GSM3924'</li><li>'GSM3926'</li><li>'GSM3928'</li><li>'GSM3930'</li><li>'GSM3932'</li></ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 'GSM3922'\n",
+       "\\item 'GSM3924'\n",
+       "\\item 'GSM3926'\n",
+       "\\item 'GSM3928'\n",
+       "\\item 'GSM3930'\n",
+       "\\item 'GSM3932'\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 'GSM3922'\n",
+       "2. 'GSM3924'\n",
+       "3. 'GSM3926'\n",
+       "4. 'GSM3928'\n",
+       "5. 'GSM3930'\n",
+       "6. 'GSM3932'\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] \"GSM3922\" \"GSM3924\" \"GSM3926\" \"GSM3928\" \"GSM3930\" \"GSM3932\""
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "7917"
+      ],
+      "text/latex": [
+       "7917"
+      ],
+      "text/markdown": [
+       "7917"
+      ],
+      "text/plain": [
+       "[1] 7917"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "gpl97 <- getGEO('GPL97')\n",
+    "Meta(gpl97)$title\n",
+    "\n",
+    "head(Meta(gpl97)$series_id)\n",
+    "\n",
+    "length(Meta(gpl97)$series_id)\n",
+    "\n",
+    "head(Meta(gpl97)$sample_id)\n",
+    "\n",
+    "length(Meta(gpl97)$sample_id)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The code above loads the GPL97 record into R. The Meta method extracts a list of header information from the GPL record. The title gives the human name of the platform. The series_id gives a vector of series ids. Note that there are 165 series associated with this platform and 7917 samples. Code like the following could be used to download all the samples or series. I show only the first 5 samples as an example:\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "File stored at: \n",
+      "\n",
+      "C:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda/GSM3922.soft\n",
+      "\n",
+      "File stored at: \n",
+      "\n",
+      "C:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda/GSM3924.soft\n",
+      "\n",
+      "File stored at: \n",
+      "\n",
+      "C:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda/GSM3926.soft\n",
+      "\n",
+      "File stored at: \n",
+      "\n",
+      "C:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda/GSM3928.soft\n",
+      "\n",
+      "File stored at: \n",
+      "\n",
+      "C:\\Users\\darinddv\\AppData\\Local\\Temp\\RtmpADleda/GSM3930.soft\n",
+      "\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<style>\n",
+       ".list-inline {list-style: none; margin:0; padding: 0}\n",
+       ".list-inline>li {display: inline-block}\n",
+       ".list-inline>li:not(:last-child)::after {content: \"\\00b7\"; padding: 0 .5ex}\n",
+       "</style>\n",
+       "<ol class=list-inline><li>'GSM3922'</li><li>'GSM3924'</li><li>'GSM3926'</li><li>'GSM3928'</li><li>'GSM3930'</li></ol>\n"
+      ],
+      "text/latex": [
+       "\\begin{enumerate*}\n",
+       "\\item 'GSM3922'\n",
+       "\\item 'GSM3924'\n",
+       "\\item 'GSM3926'\n",
+       "\\item 'GSM3928'\n",
+       "\\item 'GSM3930'\n",
+       "\\end{enumerate*}\n"
+      ],
+      "text/markdown": [
+       "1. 'GSM3922'\n",
+       "2. 'GSM3924'\n",
+       "3. 'GSM3926'\n",
+       "4. 'GSM3928'\n",
+       "5. 'GSM3930'\n",
+       "\n",
+       "\n"
+      ],
+      "text/plain": [
+       "[1] \"GSM3922\" \"GSM3924\" \"GSM3926\" \"GSM3928\" \"GSM3930\""
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "gsmids <- Meta(gpl97)$sample_id\n",
+    "gsmlist <- sapply(gsmids[1:5],getGEO)\n",
+    "names(gsmlist)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# 7 Conclusion\n",
+    "The GEOquery package provides a bridge to the vast array resources contained in the NCBI GEO repositories. By maintaining the full richness of the GEO data rather than focusing on getting only the ``numbers’’, it is possible to integrate GEO data into current Bioconductor data structures and to perform analyses on that data quite quickly and easily. These tools will hopefully open GEO data more fully to the array community at large.\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "7.1 Citing GEOquery\n",
+    "Please consider citing GEOquery if used in support of your own research:\n",
+    "\n",
+    "```{r}\n",
+    "citation(\"GEOquery\")\n",
+    "```\n",
+    "\n",
+    "\n",
+    "7.2 Reporting problems or bugs\n",
+    "If you run into problems using GEOquery, the Bioconductor Support site is a good first place to ask for help. If you are convinced that there is a bug in GEOquery (this is pretty unusual, but not unheard of), feel free to submit an issue on the GEOquery github site or file a bug report directly from R (will open a new github issue):\n",
+    "```{r}\n",
+    "bug.report(package='GEOquery')\n",
+    "```\n",
+    "\n",
+    "\n",
+    "8 Session info\n",
+    "The following package and versions were used in the production of this vignette."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "R",
+   "language": "R",
+   "name": "ir"
+  },
+  "language_info": {
+   "codemirror_mode": "r",
+   "file_extension": ".r",
+   "mimetype": "text/x-r-source",
+   "name": "R",
+   "pygments_lexer": "r",
+   "version": "4.0.2"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

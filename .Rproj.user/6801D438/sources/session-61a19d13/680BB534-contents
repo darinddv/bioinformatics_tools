@@ -1,0 +1,150 @@
+---
+title: "3 - Gene Expression by NCBI GEO2R"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Version info: R 3.2.3, Biobase 2.30.0, GEOquery 2.40.0, limma 3.26.8
+# R scripts generated  Thu Aug 22 00:17:05 EDT 2019
+
+################################################################
+```{r}
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+
+#BiocManager::install("GEOquery")
+```
+This is the NCBI tool that generates an R script for differential expression analysis and simple plotting. 
+The GEO dataset must have a geo2R option to use this which requires it to be a Series (GSExxx) dataset, but it can be available for curated and noncurated sets. It's unclear why some series datasets do not have this option, unfortunately.
+
+GEO2R will compare a large number of samples within a GEO series (GSE), by directly analyzing the series matrix file. This tool uses the bioconductor package GEOquery to download and parse GEO data and limma to perform linear model-based DE analysis. 
+
+### LIMITATIONS
+"*" Check that Sample values are comparable
+Submitters are asked to supply normalized data in the VALUE column, rendering the Samples cross-comparable. The majority of GEO data do conform to this rule. It is possible to find studies which do not appropriately normalize, or used a study design that forbid this. Additionally, poor replicates may inhibit appropriately robust statistical analysis.
+
+"*" Data type restriction
+GEO2R looks for data in the VALUE column. Some submissions do not follow this format and won't be available for analysis.
+
+"*" Within-Series restriction
+Cannot perform analysis between different series (either from the same study, or different studies).
+It should be possible to import the data into R and then analysis as you wish using other methods.
+
+"*" 255 Sample limit
+Not limited if using the R script
+
+"*" 10 minute timeout
+Not limited if using the R script
+```{r}
+#   Differential expression analysis with limma
+library(Biobase)
+library(GEOquery)
+library(limma)
+```
+
+
+```{r}
+# load series and platform data from GEO
+
+gset <- getGEO("GSE12260", GSEMatrix =TRUE, AnnotGPL=TRUE)
+if (length(gset) > 1) idx <- grep("GPL1355", attr(gset, "names")) else idx <- 1
+gset <- gset[[idx]]
+```
+
+
+```{r}
+# make proper column names to match toptable 
+fvarLabels(gset) <- make.names(fvarLabels(gset))
+fvarLabels(gset)
+```
+
+
+```{r}
+# group names for all samples
+gsms <- "00001111"
+sml <- c()
+for (i in 1:nchar(gsms)) { sml[i] <- substr(gsms,i,i) }
+```
+
+
+```{r}
+# log2 transform
+ex <- exprs(gset)
+qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+LogC <- (qx[5] > 100) ||
+          (qx[6]-qx[1] > 50 && qx[2] > 0) ||
+          (qx[2] > 0 && qx[2] < 1 && qx[4] > 1 && qx[4] < 2)
+if (LogC) { ex[which(ex <= 0)] <- NaN
+  exprs(gset) <- log2(ex) }
+```
+
+
+```{r}
+# set up the data and proceed with analysis
+sml <- paste("G", sml, sep="")    # set group names
+fl <- as.factor(sml)
+gset$description <- fl
+design <- model.matrix(~ description + 0, gset)
+colnames(design) <- levels(fl)
+fit <- lmFit(gset, design)
+cont.matrix <- makeContrasts(G1-G0, levels=design)
+fit2 <- contrasts.fit(fit, cont.matrix)
+fit2 <- eBayes(fit2, 0.01)
+tT <- topTable(fit2, adjust="fdr", sort.by="B", number=250)
+
+tT <- subset(tT, select=c("ID","adj.P.Val","P.Value","t","B","logFC","Gene.symbol","Gene.title"))
+write.table(tT, file=stdout(), row.names=F, sep="\t")
+```
+
+
+################################################################
+
+```{r}
+#   Boxplot for selected GEO samples
+library(Biobase)
+library(GEOquery)
+```
+
+
+```{r}
+# load series and platform data from GEO
+
+gset <- getGEO("GSE12260", GSEMatrix =TRUE, getGPL=FALSE)
+if (length(gset) > 1) idx <- grep("GPL1355", attr(gset, "names")) else idx <- 1
+gset <- gset[[idx]]
+```
+
+
+```{r}
+# group names for all samples in a series
+gsms <- "00001111"
+sml <- c()
+for (i in 1:nchar(gsms)) { sml[i] <- substr(gsms,i,i) }
+sml <- paste("G", sml, sep="")  #set group names
+```
+
+
+```{r}
+# order samples by group
+ex <- exprs(gset)[ , order(sml)]
+sml <- sml[order(sml)]
+fl <- as.factor(sml)
+labels <- c("Control","Doxo")
+```
+
+
+```{r}
+# set parameters and draw the plot
+palette(c("#dfeaf4","#f4dfdf", "#AABBCC"))
+dev.new(width=4+dim(gset)[[2]]/5, height=6)
+par(mar=c(2+round(max(nchar(sampleNames(gset)))/2),4,2,1))
+title <- paste ("GSE12260", '/', annotation(gset), " selected samples", sep ='')
+boxplot(ex, boxwex=0.6, notch=T, main=title, outline=FALSE, las=2, col=fl)
+legend("topleft", labels, fill=palette(), bty="n")
+```
+

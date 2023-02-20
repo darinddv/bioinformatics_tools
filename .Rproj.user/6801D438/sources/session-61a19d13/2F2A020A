@@ -1,0 +1,31 @@
+{
+    "id": "2F2A020A",
+    "path": "C:/Users/darin/projects/Bioinformatics_from_storage/Bioinformatics R/1-usingGEOdata.Rmd",
+    "project_path": null,
+    "type": "r_markdown",
+    "hash": "2184341987",
+    "contents": "",
+    "dirty": true,
+    "created": 1676851531682.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "183,0",
+        "scrollLine": "86",
+        "rmdVisualMode": "true",
+        "rmdVisualCollapsedChunks": "",
+        "rmdVisualModeLocation": "7657:0",
+        "rmdVisualWrapConfigured": "true",
+        "docOutlineVisible": "1"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1676851932,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1676853711258,
+    "read_only": false,
+    "read_only_alternatives": []
+}
